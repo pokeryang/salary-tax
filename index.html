@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工资税后到手测算 · 实际与预测</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>if(!window.supabase){document.write('<script src="https://unpkg.com/@supabase/supabase-js@2"><\/script>');}</script>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#11192D;--sub:#50607A;--line:#e6e9ef;
+  --actual:#0071e3;--actual-bg:#eaf4ff;--forecast:#6b7280;--forecast-bg:#f3f4f6;--pos:#1a9e5c;--neg:#d0342c;--head:#2F5496;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;background:var(--bg);color:var(--ink);padding:24px;line-height:1.5;font-size:14px}
+h1{font-size:22px;font-weight:600;margin-bottom:4px}
+.subtitle{color:var(--sub);font-size:13px;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:20px}
+.card h2{font-size:16px;font-weight:600;margin-bottom:14px}
+.controls{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
+.ctrl{display:flex;flex-direction:column;gap:5px}
+.ctrl label{font-size:12px;color:var(--sub)}
+select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff;color:var(--ink)}
+button{padding:8px 16px;border:none;border-radius:8px;background:var(--actual);color:#fff;font-size:13px;cursor:pointer;font-weight:500}
+button:hover{opacity:.9}
+button.ghost{background:#fff;border:1px solid var(--line);color:var(--sub)}
+.year-tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:2px solid var(--line);margin-bottom:10px}
+.year-tabs .yt{padding:6px 14px;font-size:13px;font-weight:500;color:var(--sub);background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;border-radius:0}
+.year-tabs .yt:hover{color:var(--txt)}
+.year-tabs .yt.active{color:var(--actual);border-bottom-color:var(--actual)}
+.legend-inline{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--sub);margin-top:14px}
+.legend-inline span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+/* 图表图例（可点击隐藏/显示） */
+.chart-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-bottom:10px;user-select:none}
+.chart-legend .lg{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--txt);padding:2px 4px;border-radius:4px}
+.chart-legend .lg .sw{width:12px;height:12px;border-radius:3px;display:inline-block;flex:none}
+.chart-legend .lg.off{opacity:.4;text-decoration:line-through}
+/* 区间统计: 左右两区 */
+.stat-split{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:800px){.stat-split{grid-template-columns:1fr}}
+.stat-col h3{font-size:13px;color:var(--sub);font-weight:600;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stat{background:var(--bg);border-radius:10px;padding:13px}
+.stat .k{font-size:12px;color:var(--sub);margin-bottom:5px}
+.stat .v{font-size:18px;font-weight:600}
+.charts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;margin-bottom:20px}
+@media(max-width:900px){.charts{grid-template-columns:minmax(0,1fr)}}
+.chart-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;min-width:0;overflow:hidden}
+.chart-box h3{font-size:14px;font-weight:600;margin-bottom:10px}
+.chart-wrap{position:relative;height:340px}
+.chart-frame{display:flex;align-items:stretch;height:340px}
+.axis-cv{flex:none;height:340px}
+.axis-cv.axis-l{width:46px}
+.axis-cv.axis-r{width:40px}
+.chart-scroll{position:relative;height:340px;overflow-x:auto;overflow-y:hidden;min-width:0;flex:1;scrollbar-width:none}
+.chart-scroll::-webkit-scrollbar{display:none}
+.chart-inner{position:relative;height:340px}
+.chart-sb{position:relative;width:100%;height:12px;margin-top:10px;background:var(--bg);border-radius:6px;cursor:pointer;user-select:none}
+.chart-sb-thumb{position:absolute;top:0;left:0;height:12px;min-width:24px;background:#0071e3;border-radius:6px;cursor:grab}
+.chart-sb-thumb:active{cursor:grabbing}
+.sb-grip{position:absolute;top:0;width:8px;height:12px;cursor:ew-resize}
+.sb-grip::after{content:'';position:absolute;top:3px;width:2px;height:6px;background:rgba(255,255,255,.85);border-radius:1px}
+.sb-grip-l{left:0}.sb-grip-l::after{left:2px}
+.sb-grip-r{right:0}.sb-grip-r::after{right:2px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{background:var(--head);color:#fff;font-weight:600;position:sticky;top:0;font-size:11px;line-height:1.3}
+td.month{text-align:center;font-weight:500}
+th:first-child,td:first-child{text-align:center}
+.tbl-scroll{max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+tr.actual td{background:var(--actual-bg)}
+tr.forecast td{background:var(--forecast-bg)}
+tr.actual td.month{color:var(--actual);font-weight:600}
+tr.forecast td.month{color:var(--forecast);font-weight:600}
+td[contenteditable]:focus{outline:2px solid var(--actual);background:#fff}
+td[contenteditable].fc:focus{outline:2px solid var(--forecast)}
+.note{font-size:12px;color:var(--sub);margin-top:10px;line-height:1.7}
+.toolbar{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.zero{color:#c3c9d4}
+td.anet{background:#f0f9f4 !important;color:var(--pos);font-weight:600}
+td.anet:focus{outline:2px solid var(--pos);background:#fff !important}
+</style>
+</head>
+<body>
+<h1>工资税后到手测算</h1>
+<div class="subtitle">工资明细已加密存储在云端（Supabase），需密钥解锁后加载；本机浏览器同时留一份离线缓存。
+  <span id="cloudStatus" style="margin-left:10px;font-size:12px;color:#7a8194;white-space:nowrap">● 本地模式</span>
+  <a id="btnUnlock" style="margin-left:8px;font-size:12px;color:#0071e3;cursor:pointer;text-decoration:underline">解锁 / 切换密钥</a>
+</div>
+
+<div class="card">
+  <h2>筛选与操作</h2>
+  <div class="controls">
+    <div class="ctrl"><label>起始月份</label><select id="startSel"></select></div>
+    <div class="ctrl"><label>结束月份</label><select id="endSel"></select></div>
+    <div class="ctrl"><label>数据类型</label>
+      <select id="typeSel"><option value="all">全部</option><option value="actual">仅实际</option><option value="forecast">仅预测</option></select></div>
+    <button onclick="applyFilter()">应用筛选</button>
+    <button class="ghost" onclick="resetFilter()">重置</button>
+    <button class="ghost" onclick="quick('2025-01')">近3年</button>
+    <button class="ghost" onclick="quick('2026-07')">仅预测期</button>
+    <button class="ghost" onclick="exportCSV()">导出CSV</button>
+  </div>
+  <div class="legend-inline">
+    <span><i class="dot" style="background:var(--actual)"></i>实际（已核验工资条）</span>
+    <span><i class="dot" style="background:var(--forecast)"></i>预测</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>区间统计</h2>
+  <div class="stat-split">
+    <div class="stat-col"><h3>总计</h3><div class="stat-grid" id="statTotal"></div></div>
+    <div class="stat-col"><h3>月均</h3><div class="stat-grid" id="statAvg"></div></div>
+  </div>
+</div>
+
+<div class="charts">
+  <div class="chart-box"><h3>年薪统计</h3><div class="chart-legend" id="yearLegend"></div><div class="chart-wrap"><canvas id="yearChart"></canvas></div></div>
+  <div class="chart-box"><h3>月薪统计</h3><div class="chart-legend" id="monthLegend"></div><div class="chart-frame"><canvas class="axis-cv axis-l" id="monthAxisL"></canvas><div class="chart-scroll" id="monthScroll"><div class="chart-inner" id="monthInner"><canvas id="monthChart"></canvas></div></div><canvas class="axis-cv axis-r" id="monthAxisR"></canvas></div><div class="chart-sb" id="monthSb"><div class="chart-sb-thumb" id="monthThumb"><span class="sb-grip sb-grip-l" id="monthGripL"></span><span class="sb-grip sb-grip-r" id="monthGripR"></span></div></div></div>
+</div>
+
+<div class="card">
+  <h2>逐月明细（可编辑）</h2>
+  <div class="toolbar">
+    <button id="editBtn" class="ghost" onclick="toggleEdit()">✎ 开启编辑</button>
+    <button id="addBtn" class="ghost" onclick="addRow()" style="display:none">＋ 新增月份</button>
+    <button id="saveBtn" class="ghost" onclick="saveChanges()" style="display:none">☁ 全部重新同步</button>
+    <button class="ghost" onclick="recalcFromEdits()">按编辑重新统计图表</button>
+    <span id="editHint" class="note" style="margin:0"></span>
+  </div>
+  <div class="year-tabs" id="yearNav"></div>
+  <div class="tbl-scroll">
+    <table id="tbl">
+      <thead><tr>
+        <th>月份</th><th>月薪</th><th>饭贴</th><th>加项<br>减项</th><th>十三薪</th><th>年终奖</th>
+        <th>激励A·22年发<br>·期权18w</th><th>激励B·23年发<br>·期权21.6w</th><th>激励C·24年发<br>·33w两年</th>
+        <th>激励D·25年发<br>·21.67w四年</th><th>激励E·25年发<br>·期权23.4w</th><th>激励F·26年发<br>·60w四年</th>
+        <th>特殊递延</th>
+        <th>社保<br>公积金</th><th>综合<br>个税</th><th>奖金<br>个税</th>
+        <th>税前<br>合计</th><th>税后到手<br>(计算)</th><th>实际到手<br>(填写)</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let RAW = [];  // 数据不再内嵌，改为云端(Supabase)加载 + 本机离线缓存
+// ================= Supabase 云同步（复用记账助手同项目/同密钥，一次解锁全站）=================
+const SUPABASE_URL      = "https://gwerzaaishbvtaxhwezv.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_mlvyWH8gGyPjwvFgVbhRjA__HE3yrwr";
+const TABLE = "salary";
+const STORE_KEY = "salary-records-v1";
+const SECRET_STORE_KEY = "expense-app-secret";
+let SB=null, CLOUD_ON=false, pendingOps=[];
+function setCloudStatus(st){
+  var el=document.getElementById('cloudStatus'); if(!el)return;
+  var map={local:['本地模式','#7a8194'],connecting:['连接云端…','#f59e0b'],synced:['已云同步','#10b981'],
+    offline:['离线·待同步','#ef4444'],nocloud:['本地模式（云端未建表）','#7a8194'],locked:['未解锁','#7a8194'],badsecret:['密钥错误','#ef4444']};
+  var v=map[st]||map.local; el.textContent='● '+v[0]; el.style.color=v[1];
+}
+function loadLocal(){ try{var raw=localStorage.getItem(STORE_KEY);if(raw){var p=JSON.parse(raw);
+  if(Array.isArray(p.records))RAW=p.records; if(Array.isArray(p.pendingOps))pendingOps=p.pendingOps;}}catch(e){} }
+function saveLocal(){ try{localStorage.setItem(STORE_KEY,JSON.stringify({records:RAW,pendingOps:pendingOps}));}catch(e){} }
+function sortRAW(){ RAW.sort(function(a,b){return a.month<b.month?-1:(a.month>b.month?1:0);}); }
+function rowFromRec(r){ return {id:r.month, ts:r.month+'-01', data:r, updated_at:new Date().toISOString()}; }
+function recFromRow(row){ var r=row.data||{}; r.month=row.id; return r; }
+function queueOp(op){ pendingOps=pendingOps.filter(function(o){return o.id!==op.id;}); pendingOps.push(op); saveLocal(); }
+function cloudUpsert(rec){ saveLocal(); if(!CLOUD_ON){queueOp({op:'upsert',id:rec.month});return;}
+  SB.from(TABLE).upsert(rowFromRec(rec)).then(function(res){ if(res.error){queueOp({op:'upsert',id:rec.month});setCloudStatus('offline');} else setCloudStatus('synced'); }); }
+function cloudDelete(month){ saveLocal(); if(!CLOUD_ON){queueOp({op:'delete',id:month});return;}
+  SB.from(TABLE).delete().eq('id',month).then(function(res){ if(res.error){queueOp({op:'delete',id:month});setCloudStatus('offline');} else setCloudStatus('synced'); }); }
+function flushOutbox(){ if(!CLOUD_ON||!pendingOps.length)return; var ops=pendingOps.slice(); pendingOps=[]; saveLocal();
+  ops.forEach(function(o){ if(o.op==='delete')cloudDelete(o.id); else {var r=RAW.find(function(x){return x.month===o.id;}); if(r)cloudUpsert(r);} }); }
+function salaryBoot(){ loadLocal(); if(RAW.length){sortRAW();buildSelectors();applyFilter();} initCloud(); }
+function initCloud(){
+  if(!window.supabase||!window.supabase.createClient){ setCloudStatus('local'); return; }
+  var secret=localStorage.getItem(SECRET_STORE_KEY);
+  if(!secret){ setCloudStatus('locked'); showLoginModal(); return; }
+  try{ SB=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{global:{headers:{'x-app-secret':secret}}});
+    CLOUD_ON=true; setCloudStatus('connecting'); cloudBootstrap();
+  }catch(e){ CLOUD_ON=false; setCloudStatus('local'); }
+}
+function cloudBootstrap(){
+  SB.rpc('verify_expense_secret').then(function(vres){
+    if(vres.error){ var msg=(vres.error.message||'')+' '+(vres.error.hint||'');
+      if(/does not exist|schema cache|Could not find|verify_expense_secret/i.test(msg)){ setCloudStatus('nocloud'); CLOUD_ON=false; return; }
+      setCloudStatus('badsecret'); CLOUD_ON=false; localStorage.removeItem(SECRET_STORE_KEY); showLoginModal('密钥不对，请重新输入'); return; }
+    if(vres.data!==true){ setCloudStatus('badsecret'); CLOUD_ON=false; localStorage.removeItem(SECRET_STORE_KEY); showLoginModal('密钥不对，请重新输入'); return; }
+    SB.from(TABLE).select('*').then(function(res){
+      if(res.error){ CLOUD_ON=false; setCloudStatus(/relation|does not exist|not find|schema cache/i.test(res.error.message||'')?'nocloud':'offline'); return; }
+      var cloudById={}; (res.data||[]).forEach(function(row){var r=recFromRow(row);cloudById[r.month]=r;});
+      var merged={}; RAW.forEach(function(r){merged[r.month]=r;}); Object.keys(cloudById).forEach(function(k){merged[k]=cloudById[k];});
+      var localOnly=RAW.filter(function(r){return !cloudById[r.month];});
+      RAW=Object.keys(merged).map(function(k){return merged[k];}); sortRAW(); saveLocal();
+      buildSelectors(); applyFilter(); setCloudStatus('synced');
+      localOnly.forEach(function(r){cloudUpsert(r);}); flushOutbox();
+    });
+  });
+}
+function showLoginModal(hint){ var m=document.getElementById('loginModal'); if(!m)return;
+  var h=document.getElementById('loginHint'); if(hint&&h){h.textContent=hint;h.style.color='#c53030';}
+  var i=document.getElementById('loginInput'); if(i)i.value=''; m.style.display='flex'; setTimeout(function(){if(i)i.focus();},30); }
+function hideLoginModal(){ var m=document.getElementById('loginModal'); if(m)m.style.display='none'; }
+function bindLogin(){
+  var ok=document.getElementById('btnLoginOk'); if(ok)ok.addEventListener('click',function(){
+    var v=(document.getElementById('loginInput').value||'').trim(); if(!v){toast('密钥不能为空',false);return;}
+    localStorage.setItem(SECRET_STORE_KEY,v); hideLoginModal(); setCloudStatus('connecting'); initCloud(); });
+  var skip=document.getElementById('btnLoginSkip'); if(skip)skip.addEventListener('click',function(){ hideLoginModal(); setCloudStatus('local'); });
+  var inp=document.getElementById('loginInput'); if(inp)inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){e.preventDefault();document.getElementById('btnLoginOk').click();} });
+  var un=document.getElementById('btnUnlock'); if(un)un.addEventListener('click',function(){ showLoginModal('输入密钥解锁云端数据（与记账助手 / 日常记录共用同一把密钥）'); });
+}
+function addRow(){
+  var m=(prompt('新增月份（格式 YYYY-MM）：','')||'').trim();
+  if(!/^\d{4}-\d{2}$/.test(m)){ if(m)toast('月份格式应为 YYYY-MM',false); return; }
+  if(RAW.some(function(r){return r.month===m;})){ toast('该月份已存在',false); return; }
+  var rec={month:m,actual:false,year:parseInt(m.slice(0,4),10),base:0,fan:0,s13:0,yearend:0,d5:0,d6:0,d7:0,d8:0,d9:0,d10:0,d11:0,gross:0,soc:0,comp_tax:0,bonus_tax:0,net:0,adj:0,actual_net:null};
+  recompute(rec); RAW.push(rec); sortRAW();
+  buildSelectors(); document.getElementById('startSel').value=RAW[0].month; document.getElementById('endSel').value=RAW[RAW.length-1].month;
+  applyFilter(); cloudUpsert(rec); toast('已新增 '+m+'（进入编辑填数据）',true);
+}
+function delRow(month){
+  if(!confirm('确认删除 '+month+' 这条记录？会同步删除云端。'))return;
+  RAW=RAW.filter(function(r){return r.month!==month;}); saveLocal();
+  buildSelectors(); applyFilter(); cloudDelete(month); toast('已删除 '+month,true);
+}
+const DCOLS=['d5','d6','d7','d8','d9','d10'];  // 并入综合的六项激励
+let monthChart,yearChart;
+let monthVisible=12;    // 月薪图当前可视月数（滑块拉长可缩小=看更多）
+let EDIT_ON=false;      // 编辑开关，默认只读
+let DIRTY=false;        // 是否有未保存改动
+let fileHandle=null;    // File System Access API 句柄（支持时原地覆盖）
+function fmt(n){if(n===null||n===undefined||isNaN(n))return '—';return Number(n).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmt0(n){return Number(n).toLocaleString('zh-CN',{maximumFractionDigits:0});}
+function cell(v){return v===0?'<span class="zero">0.00</span>':fmt(v);}
+function buildSelectors(){
+  const s=document.getElementById('startSel'),e=document.getElementById('endSel');
+  if(!RAW.length){ s.innerHTML='';e.innerHTML=''; return; }
+  s.innerHTML='';e.innerHTML='';  // 幂等：先清空，避免保存后重开时选项翻倍
+  RAW.forEach(r=>{s.add(new Option(r.month,r.month));e.add(new Option(r.month,r.month));});
+  s.value=RAW[0].month;e.value=RAW[RAW.length-1].month;
+}
+function currentRows(){
+  const s=document.getElementById('startSel').value,e=document.getElementById('endSel').value,t=document.getElementById('typeSel').value;
+  return RAW.filter(r=>r.month>=s&&r.month<=e&&(t==='all'||(t==='actual'&&r.actual)||(t==='forecast'&&!r.actual)));
+}
+function recompute(rec){
+  rec.adj=rec.adj||0;
+  rec.gross=rec.base+rec.fan+rec.adj+rec.s13+rec.yearend+DCOLS.reduce((a,k)=>a+rec[k],0)+rec.d11;
+  const comp=rec.base+rec.fan+rec.adj+rec.s13+DCOLS.reduce((a,k)=>a+rec[k],0);
+  rec.net=comp-rec.soc-rec.comp_tax+(rec.yearend+rec.d11-rec.bonus_tax);
+}
+// 有效税后：有「实际到手(填写)」就优先用实际值，否则（如预测月份）用公式计算值
+function effNet(r){ return (r.actual_net==null)?r.net:r.actual_net; }
+function renderTable(){
+  const tb=document.getElementById('tbody');tb.innerHTML='';
+  const ce=EDIT_ON?' contenteditable':'';
+  currentRows().forEach(r=>{
+    const tr=document.createElement('tr');tr.className=r.actual?'actual':'forecast';tr.dataset.month=r.month;
+    const fc=r.actual?'':'fc';
+    const ed=f=>'<td'+ce+' class="'+fc+'" data-f="'+f+'">'+cell(r[f])+'</td>';
+    const delx=EDIT_ON?'<span onclick="delRow(\''+r.month+'\')" title="删除该月" style="margin-left:6px;color:#d0342c;cursor:pointer;font-weight:700">✕</span>':'';
+    tr.innerHTML='<td class="month">'+r.month+delx+'</td>'+
+      ed('base')+ed('fan')+ed('adj')+ed('s13')+ed('yearend')+
+      ed('d7')+ed('d8')+ed('d5')+ed('d6')+ed('d9')+ed('d10')+ed('d11')+
+      ed('soc')+ed('comp_tax')+ed('bonus_tax')+
+      '<td data-cell="gross">'+fmt(r.gross)+'</td>'+
+      '<td data-cell="net"><b>'+fmt(r.net)+'</b></td>'+
+      '<td'+ce+' class="anet" data-f="actual_net">'+(r.actual_net==null?'—':fmt(r.actual_net))+'</td>';
+    tb.appendChild(tr);
+  });
+  attachEdit();
+}
+function buildYearNav(){
+  const box=document.getElementById('yearNav');if(!box)return;
+  box.innerHTML='';
+  // 只列出当前筛选范围内实际存在的年份
+  const years=[...new Set(currentRows().map(r=>r.month.slice(0,4)))];
+  years.forEach(y=>{
+    const b=document.createElement('button');
+    b.className='yt';b.textContent=y;b.dataset.year=y;
+    b.onclick=()=>jumpToYear(y);
+    box.appendChild(b);
+  });
+  bindYearScrollSync();
+  setActiveYearTab(years[0]);
+}
+function setActiveYearTab(y){
+  document.querySelectorAll('#yearNav .yt').forEach(b=>b.classList.toggle('active',b.dataset.year===y));
+}
+function jumpToYear(y){
+  const scroll=document.querySelector('.tbl-scroll');if(!scroll)return;
+  const row=scroll.querySelector('#tbody tr[data-month^="'+y+'"]');
+  if(!row)return;
+  const thead=scroll.querySelector('thead');
+  const th=thead?thead.getBoundingClientRect().height:0;
+  scroll.scrollTop+=row.getBoundingClientRect().top-scroll.getBoundingClientRect().top-th;
+  setActiveYearTab(y);
+}
+// 滑动表格时联动高亮对应年份 tab
+function bindYearScrollSync(){
+  const scroll=document.querySelector('.tbl-scroll');if(!scroll)return;
+  const thead=scroll.querySelector('thead');
+  scroll.onscroll=()=>{
+    const th=thead?thead.getBoundingClientRect().height:0;
+    const top=scroll.getBoundingClientRect().top+th;
+    const rows=scroll.querySelectorAll('#tbody tr');
+    let cur=null;
+    for(const r of rows){
+      // 取顶部参考线之上（或刚好触及）的最后一行所属年份
+      if(r.getBoundingClientRect().top-top<=1) cur=r.dataset.month.slice(0,4);
+      else break;
+    }
+    if(!cur&&rows.length)cur=rows[0].dataset.month.slice(0,4);
+    if(cur)setActiveYearTab(cur);
+  };
+}
+function attachEdit(){
+  document.querySelectorAll('td[contenteditable]').forEach(td=>{
+    td.addEventListener('blur',()=>{
+      const rec=RAW.find(x=>x.month===td.closest('tr').dataset.month);
+      const f=td.dataset.f;
+      const raw=td.textContent.replace(/[, ]/g,'');
+      if(f==='actual_net'){
+        rec.actual_net=(raw===''||raw==='—')?null:(parseFloat(raw)||0);
+        DIRTY=true;markDirty();cloudUpsert(rec);
+        renderTable();return;  // 实际到手独立, 不触发公式重算
+      }
+      rec[f]=parseFloat(raw)||0;
+      DIRTY=true;markDirty();
+      recompute(rec);cloudUpsert(rec);renderTable();renderStats();renderCharts();
+    });
+  });
+}
+function renderStats(){
+  const rows=currentRows(),m=rows.length||1;
+  const sg=rows.reduce((a,b)=>a+b.gross,0), sn=rows.reduce((a,b)=>a+effNet(b),0);
+  const stax=rows.reduce((a,b)=>a+b.comp_tax+b.bonus_tax,0), ssoc=rows.reduce((a,b)=>a+b.soc,0);
+  const c=(k,v)=>'<div class="stat"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';
+  document.getElementById('statTotal').innerHTML=
+    c('税前合计',fmt0(sg))+c('税后合计',fmt0(sn))+c('个税合计',fmt0(stax))+c('社保公积金合计',fmt0(ssoc));
+  document.getElementById('statAvg').innerHTML=
+    c('税前月均',fmt0(sg/m))+c('税后月均',fmt0(sn/m))+c('个税月均',fmt0(stax/m))+c('社保公积金月均',fmt0(ssoc/m));
+}
+// 构建可点击图例：点击隐藏/显示对应数据集
+function buildLegend(chart, containerId){
+  const box=document.getElementById(containerId);
+  if(!box)return;
+  box.innerHTML='';
+  chart.data.datasets.forEach((ds,i)=>{
+    let col=ds.type==='line'?(ds.borderColor||'#888'):ds.backgroundColor;
+    if(Array.isArray(col))col=col[0];
+    if(typeof col!=='string')col='#888';
+    const item=document.createElement('span');
+    item.className='lg'+(chart.isDatasetVisible(i)?'':' off');
+    item.innerHTML='<span class="sw" style="background:'+col+'"></span>'+ds.label;
+    item.onclick=()=>{
+      const vis=chart.isDatasetVisible(i);
+      chart.setDatasetVisibility(i,!vis);
+      chart.update();
+      item.classList.toggle('off',vis);
+    };
+    box.appendChild(item);
+  });
+}
+// 数值标签插件：柱顶显示金额（万，如 3.6w）；折线点显示增长率（如 20%）
+const fmtW=v=>{ if(v==null||isNaN(v))return''; const w=v/10000; return (Math.abs(w)>=10?w.toFixed(0):w.toFixed(1))+'w'; };
+const barValueLabel={
+  id:'barValueLabel',
+  afterDatasetsDraw(chart){
+    const {ctx}=chart;
+    ctx.save();
+    ctx.font='9px -apple-system,system-ui,sans-serif';
+    ctx.textAlign='center';
+    ctx.textBaseline='bottom';
+    chart.data.datasets.forEach((ds,di)=>{
+      if(!chart.isDatasetVisible(di))return;
+      const meta=chart.getDatasetMeta(di);
+      if(ds.type==='bar'){
+        ctx.fillStyle='#444';
+        meta.data.forEach((el,i)=>{
+          const val=ds.data[i];
+          if(val==null||isNaN(val))return;
+          ctx.fillText(fmtW(val), el.x, el.y-2);
+        });
+      }else if(ds.type==='line'){
+        ctx.fillStyle=ds.borderColor||'#1a9e5c';
+        meta.data.forEach((el,i)=>{
+          const val=ds.data[i];
+          if(val==null||isNaN(val))return;
+          ctx.fillText(val+'%', el.x, el.y-4);
+        });
+      }
+    });
+    ctx.restore();
+  }
+};
+// 冻结坐标轴插件：把左(y,万)右(y1,%)刻度画到滚动区外的固定画布上，横滑时不动
+const frozenAxes={
+  id:'frozenAxes',
+  afterDraw(chart){
+    const paint=(cid,scale,fmt,align)=>{
+      if(!cid||!scale)return;
+      const cv=document.getElementById(cid); if(!cv)return;
+      const dpr=window.devicePixelRatio||1;
+      const w=cv.clientWidth, h=cv.clientHeight;
+      cv.width=w*dpr; cv.height=h*dpr;
+      const cx=cv.getContext('2d');
+      cx.setTransform(dpr,0,0,dpr,0,0);
+      cx.clearRect(0,0,w,h);
+      cx.font='9px -apple-system,system-ui,sans-serif';
+      cx.fillStyle='#8a8f99';
+      cx.textBaseline='middle';
+      cx.textAlign=align;
+      const x=align==='right'?w-4:4;
+      (scale.ticks||[]).forEach(t=>{
+        const y=scale.getPixelForValue(t.value);
+        if(y==null||isNaN(y))return;
+        cx.fillText(fmt(t.value), x, y);
+      });
+    };
+    const o=chart.options;
+    paint(o.frozenLeftId, chart.scales.y, v=>(v/10000)+'万', 'right');
+    paint(o.frozenRightId, chart.scales.y1, v=>v+'%', 'left');
+  }
+};
+function renderCharts(){
+  const rows=currentRows();
+  // 统一配色：月薪柱-实际蓝、预测灰；年薪柱-橙；折线深绿/浅绿
+  const C={preA:'#0071e3',netA:'rgba(0,113,227,.4)',preF:'#6b7280',netF:'rgba(107,114,128,.4)',yrPre:'#e8890c',yrNet:'rgba(232,137,12,.4)',lnDark:'#1a9e5c',lnLight:'#8fd9ae'};
+  // 月薪图
+  const labels=rows.map(r=>r.month), gross=rows.map(r=>Math.round(r.gross)), net=rows.map(r=>Math.round(effNet(r)));
+  const mom=rows.map((r,i)=>i===0?null:(effNet(rows[i-1])?Math.round((effNet(r)-effNet(rows[i-1]))/effNet(rows[i-1])*10000)/100:null));
+  const gmom=gross.map((g,i)=>i===0?null:(gross[i-1]?Math.round((g-gross[i-1])/gross[i-1]*10000)/100:null));
+  const cg=rows.map(r=>r.actual?C.preA:C.preF), cn=rows.map(r=>r.actual?C.netA:C.netF);
+  if(monthChart)monthChart.destroy();
+  // 默认可视 12 个月，超出部分通过横向滚动/自定义滚动条查看；滑块可拖动也可拉长（拉长=看更多月，柱变窄）
+  const total=labels.length;
+  const MINV=3, MAXV=total;
+  if(monthVisible>MAXV)monthVisible=MAXV; if(monthVisible<MINV)monthVisible=Math.min(MINV,MAXV);
+  const scroll=document.getElementById('monthScroll');
+  const inner=document.getElementById('monthInner');
+  const sb=document.getElementById('monthSb');
+  const thumb=document.getElementById('monthThumb');
+  const gripL=document.getElementById('monthGripL');
+  const gripR=document.getElementById('monthGripR');
+  const viewW=scroll.clientWidth||600;                 // 可视宽度
+  const canZoom=total>MINV;
+  // 用「像素」而非百分比设定内层宽度，避免响应式画布在滚动容器内测量不到稳定宽度而塌陷
+  const calcInnerW=()=>(monthVisible>=total)?viewW:Math.round(total*(viewW/monthVisible));
+  let innerW=calcInnerW();
+  inner.style.width=innerW+'px';
+  sb.style.display=canZoom?'':'none';
+  monthChart=new Chart(document.getElementById('monthChart'),{
+    plugins:[barValueLabel,frozenAxes],
+    data:{labels,datasets:[
+      {type:'bar',label:'税前',data:gross,backgroundColor:cg,borderRadius:3,yAxisID:'y',order:2},
+      {type:'bar',label:'税后',data:net,backgroundColor:cn,borderRadius:3,yAxisID:'y',order:2},
+      {type:'line',label:'税前环比%',data:gmom,borderColor:C.lnDark,backgroundColor:'rgba(26,158,92,.1)',borderWidth:1,tension:.25,pointRadius:2,spanGaps:true,yAxisID:'y1',order:0,hidden:true},
+      {type:'line',label:'税后环比%',data:mom,borderColor:C.lnLight,backgroundColor:'rgba(143,217,174,.15)',borderWidth:1,tension:.25,pointRadius:2,spanGaps:true,yAxisID:'y1',order:0,hidden:true}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      frozenLeftId:'monthAxisL',frozenRightId:'monthAxisR',
+      layout:{padding:{left:0,right:0}},
+      scales:{y:{position:'left',ticks:{display:false},afterFit:s=>{s.width=0;}},
+        y1:{position:'right',grid:{drawOnChartArea:false},ticks:{display:false},afterFit:s=>{s.width=0;}},
+        x:{ticks:{color:'#8a8f99',font:{size:9},maxRotation:0,minRotation:0,autoSkip:false}}}}});
+  buildLegend(monthChart,'monthLegend');
+  // 自定义滚动条：滑块长度 = 可见月/总月；拖动滑块=平移，拖动两端手柄=缩放（看更多/更少月）
+  if(canZoom){
+    const layout=()=>{
+      const tw=Math.max(24, Math.round(sb.clientWidth*Math.min(1,monthVisible/total)));
+      thumb.style.width=tw+'px';
+      const track=sb.clientWidth-tw;
+      const mx=scroll.scrollWidth-scroll.clientWidth;
+      thumb.style.left=(mx>0?scroll.scrollLeft/mx*track:0)+'px';
+    };
+    // 应用新的可见月数，保持左侧锚定的月份不动
+    const applyZoom=(newVisible,anchorIdx)=>{
+      monthVisible=Math.max(MINV,Math.min(MAXV,Math.round(newVisible)));
+      innerW=calcInnerW();
+      inner.style.width=innerW+'px';
+      monthChart.resize();
+      const per=innerW/total;
+      scroll.scrollLeft=Math.max(0,Math.min(scroll.scrollWidth-scroll.clientWidth,anchorIdx*per));
+      monthChart.update('none');
+      layout();
+    };
+    // 滚动内容 -> 更新滑块位置
+    scroll.onscroll=layout;
+    // 拖拽滑块主体 -> 平移
+    const onDown=e=>{
+      if(e.target===gripL||e.target===gripR)return;
+      e.preventDefault();
+      const startX=(e.touches?e.touches[0].clientX:e.clientX);
+      const startLeft=parseFloat(thumb.style.left)||0;
+      const tw=thumb.offsetWidth, track=sb.clientWidth-tw, mx=scroll.scrollWidth-scroll.clientWidth;
+      const move=ev=>{
+        const x=(ev.touches?ev.touches[0].clientX:ev.clientX);
+        let nl=Math.max(0,Math.min(track,startLeft+(x-startX)));
+        thumb.style.left=nl+'px';
+        scroll.scrollLeft=track>0?nl/track*mx:0;
+      };
+      const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up);};
+      document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+      document.addEventListener('touchmove',move,{passive:false});document.addEventListener('touchend',up);
+    };
+    thumb.onmousedown=onDown; thumb.ontouchstart=onDown;
+    // 拖拽端点手柄 -> 缩放（拉长滑块=看更多月）
+    const onGrip=(side)=>e=>{
+      e.preventDefault();e.stopPropagation();
+      const startX=(e.touches?e.touches[0].clientX:e.clientX);
+      const track0=sb.clientWidth;
+      const startVisible=monthVisible;
+      const per0=innerW/total;
+      const firstIdx=Math.round(scroll.scrollLeft/per0);       // 左端手柄拖动时锚定右端月份
+      const lastIdx=Math.round((scroll.scrollLeft+scroll.clientWidth)/per0);
+      const move=ev=>{
+        const x=(ev.touches?ev.touches[0].clientX:ev.clientX);
+        const dx=x-startX;
+        // 滑块宽度 ∝ monthVisible/total；右端右移 or 左端左移 => 滑块变长 => 可见月增多
+        const dVis=(side==='r'? dx : -dx)/track0*total;
+        const nv=startVisible+dVis;
+        applyZoom(nv, side==='r'?firstIdx:Math.max(0,lastIdx-Math.round(nv)));
+      };
+      const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up);};
+      document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+      document.addEventListener('touchmove',move,{passive:false});document.addEventListener('touchend',up);
+    };
+    gripR.onmousedown=onGrip('r'); gripR.ontouchstart=onGrip('r');
+    gripL.onmousedown=onGrip('l'); gripL.ontouchstart=onGrip('l');
+    // 点击轨道空白处 -> 跳转
+    sb.onmousedown=e=>{ if(e.target===thumb||e.target===gripL||e.target===gripR)return; const tw=thumb.offsetWidth,track=sb.clientWidth-tw,mx=scroll.scrollWidth-scroll.clientWidth; const nl=Math.max(0,Math.min(track,e.offsetX-tw/2)); scroll.scrollLeft=track>0?nl/track*mx:0; };
+    // 默认定位到当前年份的位置
+    requestAnimationFrame(()=>{
+      const curY=String(new Date().getFullYear());
+      let idx=labels.findIndex(m=>m.slice(0,4)===curY);
+      if(idx<0)idx=labels.length-1;
+      const per=innerW/total;
+      scroll.scrollLeft=Math.max(0,Math.min(scroll.scrollWidth-scroll.clientWidth,idx*per));
+      layout();
+    });
+  }
+  // 年薪图: 聚合 currentRows 按年
+  const ym={};
+  rows.forEach(r=>{const y=r.month.slice(0,4); (ym[y]=ym[y]||{g:0,n:0}); ym[y].g+=r.gross; ym[y].n+=effNet(r);});
+  const years=Object.keys(ym).sort();
+  const yg=years.map(y=>Math.round(ym[y].g)), yn=years.map(y=>Math.round(ym[y].n));
+  const yoy=years.map((y,i)=>i===0?null:(ym[years[i-1]].n?Math.round((ym[y].n-ym[years[i-1]].n)/ym[years[i-1]].n*10000)/100:null));
+  const gyoy=years.map((y,i)=>i===0?null:(ym[years[i-1]].g?Math.round((ym[y].g-ym[years[i-1]].g)/ym[years[i-1]].g*10000)/100:null));
+  if(yearChart)yearChart.destroy();
+  yearChart=new Chart(document.getElementById('yearChart'),{
+    plugins:[barValueLabel],
+    data:{labels:years,datasets:[
+      {type:'bar',label:'税前年薪',data:yg,backgroundColor:C.yrPre,borderRadius:3,yAxisID:'y',order:2},
+      {type:'bar',label:'税后年薪',data:yn,backgroundColor:C.yrNet,borderRadius:3,yAxisID:'y',order:2},
+      {type:'line',label:'税前同比%',data:gyoy,borderColor:C.lnDark,backgroundColor:'rgba(26,158,92,.1)',borderWidth:1,tension:.25,pointRadius:3,spanGaps:true,yAxisID:'y1',order:0,hidden:true},
+      {type:'line',label:'税后同比%',data:yoy,borderColor:C.lnLight,backgroundColor:'rgba(143,217,174,.15)',borderWidth:1,tension:.25,pointRadius:3,spanGaps:true,yAxisID:'y1',order:0,hidden:true}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{position:'left',ticks:{color:'#8a8f99',font:{size:9},callback:v=>(v/10000)+'万'}},
+        y1:{position:'right',grid:{drawOnChartArea:false},ticks:{color:'#8a8f99',font:{size:9},callback:v=>v+'%'}},
+        x:{ticks:{color:'#8a8f99',font:{size:9},maxRotation:0,minRotation:0,autoSkip:false}}}}});
+  buildLegend(yearChart,'yearLegend');
+}
+function applyFilter(){renderTable();renderStats();renderCharts();buildYearNav();}
+function resetFilter(){document.getElementById('startSel').value=RAW[0].month;document.getElementById('endSel').value=RAW[RAW.length-1].month;document.getElementById('typeSel').value='all';applyFilter();}
+function quick(s){document.getElementById('startSel').value=s;document.getElementById('endSel').value=RAW[RAW.length-1].month;document.getElementById('typeSel').value='all';applyFilter();}
+function recalcFromEdits(){renderTable();renderStats();renderCharts();}
+function exportCSV(){
+  const rows=currentRows();
+  let csv='月份,类型,月薪,饭贴,加项减项,十三薪,年终奖,激励A,激励B,激励C,激励D,激励E,激励F,特殊递延,社保公积金,综合个税,奖金个税,税前合计,税后到手(公式),实际到手(表记)\n';
+  rows.forEach(r=>{csv+=[r.month,r.actual?'实际':'预测',r.base,r.fan,r.adj,r.s13,r.yearend,r.d7,r.d8,r.d5,r.d6,r.d9,r.d10,r.d11,r.soc,r.comp_tax,r.bonus_tax,r.gross,r.net,(r.actual_net==null?'':r.actual_net)].join(',')+'\n';});
+  const b=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='salary_filtered.csv';a.click();
+}
+/* ===== 编辑 / 保存 功能 ===== */
+function toggleEdit(){
+  EDIT_ON=!EDIT_ON;
+  const eb=document.getElementById('editBtn'), sb=document.getElementById('saveBtn'), ab=document.getElementById('addBtn');
+  if(EDIT_ON){
+    eb.textContent='🔒 退出编辑'; sb.style.display=''; if(ab)ab.style.display='';
+    document.getElementById('editHint').textContent='编辑中：点单元格直接改数字，改动实时自动同步到云端（无需手动保存）。行首✕可删除该月，「＋新增月份」可加行。';
+  }else{
+    eb.textContent='✎ 开启编辑'; sb.style.display='none'; if(ab)ab.style.display='none';
+    document.getElementById('editHint').textContent='已退出编辑（只读）。改动均已实时同步云端。';
+  }
+  renderTable();
+}
+function markDirty(){
+  const sb=document.getElementById('saveBtn');
+  if(sb){sb.style.display=''; sb.textContent='💾 保存修改 *';}
+}
+function toast(msg,ok){
+  let t=document.getElementById('saveToast');
+  if(!t){t=document.createElement('div');t.id='saveToast';
+    t.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 18px;border-radius:8px;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.18);';
+    document.body.appendChild(t);}
+  t.style.background=ok?'#e7f7ec':'#fdecea'; t.style.color=ok?'#1a7f37':'#b3261e';
+  t.textContent=msg; t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(()=>{t.style.display='none';},3500);
+}
+// 用当前内存中的 RAW 重建完整 HTML 文本（只替换 RAW 数组，其余原样保留）
+function buildHTML(){
+  const doc='<!DOCTYPE html>\n<html lang="zh-CN">\n'+document.documentElement.innerHTML+'\n</html>';
+  const raw='const RAW = '+JSON.stringify(RAW)+';';
+  return doc.replace(/const RAW = \[[\s\S]*?\];/, ()=>raw);
+}
+async function saveChanges(){
+  saveLocal();
+  if(!CLOUD_ON){ toast('未连接云端：改动已存本机缓存，联网并解锁后会自动补传',false); return; }
+  var n=RAW.length,i=0;
+  (function pump(){
+    if(i>=n){ setCloudStatus('synced'); DIRTY=false; document.getElementById('saveBtn').textContent='☁ 全部重新同步'; toast('已全部同步到云端 ✓（'+n+' 条）',true); return; }
+    var end=Math.min(i+40,n);
+    for(var k=i;k<end;k++){ SB.from(TABLE).upsert(rowFromRec(RAW[k])); }
+    i=end; setTimeout(pump,120);
+  })();
+}
+window.addEventListener('beforeunload',e=>{ if(pendingOps&&pendingOps.length){e.preventDefault();e.returnValue='';} });
+function __salaryInit(){ bindLogin(); salaryBoot(); }
+if(document.readyState!=='loading'){ __salaryInit(); } else { document.addEventListener('DOMContentLoaded',__salaryInit); }
+</script>
+
+<div id="loginModal" style="display:none;position:fixed;inset:0;background:rgba(20,25,35,.55);z-index:200;align-items:center;justify-content:center;">
+  <div style="background:#fff;padding:22px 24px;border-radius:12px;min-width:280px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.2);">
+    <div style="font-weight:600;font-size:15px;margin-bottom:10px;">🔒 输入云端密钥</div>
+    <div id="loginHint" style="font-size:12px;color:#7a8194;line-height:1.5;margin-bottom:12px;">与记账助手 / 日常记录共用同一把密钥，本机输入一次长期有效。</div>
+    <input id="loginInput" type="password" placeholder="app secret" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;">
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+      <button class="ghost" id="btnLoginSkip" style="background:#eef1f6;color:#4b5563;">先离线用</button>
+      <button id="btnLoginOk" style="background:#0071e3;color:#fff;">解锁</button>
+    </div>
+  </div>
+</div>
+
+<div class="card" id="formulaDoc">
+  <h2>计算方法说明</h2>
+  <div class="note">
+    <b>① 社保公积金</b><br>
+    社保 = min(月薪, 社保上限) × 10.5%（养老8% + 医疗2% + 失业0.5%）<br>
+    公积金 = min(月薪, 公积金上限) × 12%（月缴存额取整到元）<br>
+    · 2021年：社保上限19783、公积金上限32077。社保公积金总计5926.22（月薪26000未达公积金上限，实际约5197.22）<br>
+    · 2022年：社保上限22311、公积金上限36675。社保公积金总计6743.65（月薪29500未达公积金上限，实际约5245.22）<br>
+    · 2023年：社保上限24060、公积金上限38390。社保公积金总计7133.30（月薪36000未达公积金上限，实际约6949.66）<br>
+    · 2024年：社保上限24930、公积金上限39530。社保公积金总计7361.65<br>
+    · 2025年：社保上限25299、公积金上限40694。社保公积金总计7539.40<br>
+    每年7月上调<br><br>
+
+    <b>② 工资个税（累计预扣法）</b><br>
+    本月税额 = （累计收入 − 5000×月数 − 累计社保公积金）× 预扣率 − 速算扣除数 − 前几个月累计扣税<br>
+    · 累计收入≤36000→3%(0)<br>
+    · 累计收入≤144000→10%(2520)<br>
+    · 累计收入≤300000→20%(16920)<br>
+    · 累计收入≤420000→25%(31920)<br>
+    · 累计收入≤660000→30%(52920)<br>
+    · 累计收入≤960000→35%(85920)<br>
+    · 其余→45%(181920)<br>
+    每年1月起累计额归零<br>
+    举例（假设月薪50000、每月社保公积金7539.40、无专项附加扣除）：<br>
+    · 1月：累计收入50000 − 5000×1 − 7539.40 = 37460.60，落10%档 → 37460.60×10% − 2520 = 1226.06，本月扣1226.06。<br>
+    · 2月：累计100000 − 10000 − 15078.80 = 74921.20，仍10%档 → 累计税74921.20×10% − 2520 = 4972.12，减1月已扣1226.06，本月扣3746.06。<br>
+    · 4月：累计200000 − 20000 − 30157.60 = 149842.40，跨入20%档 → 149842.40×20% − 16920 = 13048.48，减前3月累计已扣8718.18，本月扣4330.30。<br><br>
+
+    <b>③ 年终奖 + 特殊递延（全年一次性奖金单独计税）</b><br>
+    年终奖与特殊递延激励合并为一个基数，不并入当月工资<br>
+    · 第一步：（年终奖 + 特殊递延）÷12 商数定档 预扣率、速算扣除数<br>
+    · 第二步：奖金税 = 合并基数 × 适用税率 − 速算扣除数（注意：税率乘的是「合并基数全额」，不是除以12后的商数）。<br>
+    举例：<br>
+    · 第一步：26年4月奖金合并基数 = 360000 + 204150 = 564150；564150÷12 = 47012.50，落在 35000~55000 档 → 税率30%、速算扣除数4410；<br>
+    · 第二步：奖金税 = 564150×30% − 4410 = 164835
+  </div>
+</div>
+</body>
+</html>
