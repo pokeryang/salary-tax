@@ -608,13 +608,30 @@ function buildHTML(){
 async function saveChanges(){
   saveLocal();
   if(!CLOUD_ON){ toast('未连接云端：改动已存本机缓存，联网并解锁后会自动补传',false); return; }
-  var n=RAW.length,i=0;
-  (function pump(){
-    if(i>=n){ setCloudStatus('synced'); DIRTY=false; document.getElementById('saveBtn').textContent='☁ 全部重新同步'; toast('已全部同步到云端 ✓（'+n+' 条）',true); return; }
-    var end=Math.min(i+40,n);
-    for(var k=i;k<end;k++){ SB.from(TABLE).upsert(rowFromRec(RAW[k])); }
-    i=end; setTimeout(pump,120);
-  })();
+  var n=RAW.length, failed=0;
+  var btn=document.getElementById('saveBtn');
+  if(btn){ btn.disabled=true; btn.textContent='☁ 同步中…'; }
+  setCloudStatus('connecting');
+  try{
+    // 必须 await：supabase-js v2 的 upsert 是 thenable 懒执行，不 then/await 请求不会真正发出
+    for(var i=0;i<n;i+=40){
+      var batch=RAW.slice(i,Math.min(i+40,n));
+      var results=await Promise.all(batch.map(function(rec){
+        return SB.from(TABLE).upsert(rowFromRec(rec)).then(function(res){
+          if(res.error){ failed++; queueOp({op:'upsert',id:rec.month}); }
+        }, function(){ failed++; queueOp({op:'upsert',id:rec.month}); });
+      }));
+      void results;
+    }
+  }catch(e){ failed++; }
+  if(btn){ btn.disabled=false; btn.textContent='☁ 全部重新同步'; }
+  if(failed){
+    setCloudStatus('offline');
+    toast('同步未完成：'+failed+'/'+n+' 条失败，已加入待补传队列',false);
+  }else{
+    setCloudStatus('synced'); DIRTY=false;
+    toast('已全部同步到云端 ✓（'+n+' 条）',true);
+  }
 }
 window.addEventListener('beforeunload',e=>{ if(pendingOps&&pendingOps.length){e.preventDefault();e.returnValue='';} });
 function __salaryInit(){ bindLogin(); salaryBoot(); }
