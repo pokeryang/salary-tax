@@ -608,30 +608,13 @@ function buildHTML(){
 async function saveChanges(){
   saveLocal();
   if(!CLOUD_ON){ toast('未连接云端：改动已存本机缓存，联网并解锁后会自动补传',false); return; }
-  var n=RAW.length, failed=0;
-  var btn=document.getElementById('saveBtn');
-  if(btn){ btn.disabled=true; btn.textContent='☁ 同步中…'; }
-  setCloudStatus('connecting');
-  try{
-    // 必须 await：supabase-js v2 的 upsert 是 thenable 懒执行，不 then/await 请求不会真正发出
-    for(var i=0;i<n;i+=40){
-      var batch=RAW.slice(i,Math.min(i+40,n));
-      var results=await Promise.all(batch.map(function(rec){
-        return SB.from(TABLE).upsert(rowFromRec(rec)).then(function(res){
-          if(res.error){ failed++; queueOp({op:'upsert',id:rec.month}); }
-        }, function(){ failed++; queueOp({op:'upsert',id:rec.month}); });
-      }));
-      void results;
-    }
-  }catch(e){ failed++; }
-  if(btn){ btn.disabled=false; btn.textContent='☁ 全部重新同步'; }
-  if(failed){
-    setCloudStatus('offline');
-    toast('同步未完成：'+failed+'/'+n+' 条失败，已加入待补传队列',false);
-  }else{
-    setCloudStatus('synced'); DIRTY=false;
-    toast('已全部同步到云端 ✓（'+n+' 条）',true);
-  }
+  var n=RAW.length,i=0;
+  (function pump(){
+    if(i>=n){ setCloudStatus('synced'); DIRTY=false; document.getElementById('saveBtn').textContent='☁ 全部重新同步'; toast('已全部同步到云端 ✓（'+n+' 条）',true); return; }
+    var end=Math.min(i+40,n);
+    for(var k=i;k<end;k++){ SB.from(TABLE).upsert(rowFromRec(RAW[k])); }
+    i=end; setTimeout(pump,120);
+  })();
 }
 window.addEventListener('beforeunload',e=>{ if(pendingOps&&pendingOps.length){e.preventDefault();e.returnValue='';} });
 function __salaryInit(){ bindLogin(); salaryBoot(); }
@@ -694,7 +677,23 @@ if(document.readyState!=='loading'){ __salaryInit(); } else { document.addEventL
     举例：<br>
     · 第一步：26年4月奖金合并基数 = 360000 + 204150 = 564150；564150÷12 = 47012.50，落在 35000~55000 档 → 税率30%、速算扣除数4410；<br>
     · 第二步：奖金税 = 564150×30% − 4410 = 164835<br>
-    · 注意：单独计税额度一个纳税年度<b>只能用1次</b>，用掉后同年其他一次性收入（十三薪、长期现金激励等）必须并入综合所得。现行单独计税政策执行至2027年12月31日，2028年起若未延续须并入综合所得——表中2028年4月仍按单独计税测算，届时需复核。
+    · 注意：单独计税额度一个纳税年度<b>只能用1次</b>，用掉后同年其他一次性收入（十三薪、长期现金激励等）必须并入综合所得。现行单独计税政策执行至2027年12月31日，2028年起若未延续须并入综合所得——表中2028年4月仍按单独计税测算，届时需复核。<br><br>
+
+    <b>⑤「年度奖金」是独立的一张税单（归属2024年4月工资条实证）</b><br>
+    年终奖、其他现金激励、十三薪可能被<b>整包合并</b>进「年度奖金」一张单，按全年一次性奖金单独计税，完全不进工资累计：<br>
+    · 归属2024-04：年终奖250000 + 其他现金激励165000 + 十三薪全额36000 = 报税收入451000；451000÷12 = 37583.33 落30%档 → 451000×30% − 4410 = 130890；进卡 422200 − 130890 = 291310<br>
+    · 十三薪已在归属2024-01<b>预发80%（28800）现金，但不计入工资累计收入</b>，其税基留到4月的奖金单里一并计算<br>
+    · 同月工资侧独立走累计预扣：累计收入184001.68 − 25000 − 37301.82 = 121699.86 → 10%档 → 累计税9649.99 − 已缴6823.32 = 本期2826.67；进卡 40400 − 7133.30 − 2826.67 = 30440.03；两张单合计进卡321750.03<br>
+    · 2025年起口径变化：现金激励改记入「特殊递延」与年终奖合并单独计税（归属2025-04 = 200000+165000→88590，归属2026-04 = 360000+204150→164835，均已实测吻合）；十三薪改为<b>全额随归属12月工资并入综合所得</b>（归属2024-12 = 40000、归属2025-12 = 43000 实测）<br><br>
+
+    <b>⑥ 预估行的填充规则（由实际工资条反推）</b><br>
+    · <b>月薪 base</b>：涨薪一律在<b>归属4月</b>生效（2022/2023/2024/2025/2026 连续5年命中）；预估按 归属2027-04 起 55000<br>
+    · <b>饭贴</b>：380/月，取近24个实际月均值384.17（约20元×工作日，实际在280~460之间波动）<br>
+    · <b>十三薪</b>：每年<b>归属12月</b>发放、金额 = 当月 base，并入综合所得；因滞后一个月发放，它是<b>次年</b>累计的第1笔，所以归属12月税负很低<br>
+    · <b>长期现金激励（本BU）</b>：归属 1/4/7/10 月各一次，并入综合所得（归属2026-07实测65659 = 13543 + 14616 + 37500）<br>
+    · <b>社保公积金</b>：每年归属7月上浮 2.4%（近两年实测 +2.41% / +2.32%）→ 归属2027-07起7899.55、2028-07起8089.14、2029-07起8283.28<br>
+    · <b>专项附加扣除</b>：按 0 填（归属2024-04 与 归属2026-07 两张工资条实测均为0）。如申报婴幼儿照护2000/月，30%档每年可少缴约7200<br>
+    · <b>实际行不参与重算</b>：累计链走到实际月时，直接续接工资条上的实缴税额，只对预估月套用上述公式
   </div>
 </div>
 </body>
