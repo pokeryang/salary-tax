@@ -78,6 +78,9 @@ td[contenteditable].fc:focus{outline:2px solid var(--forecast)}
 .zero{color:#c3c9d4}
 td.anet{background:#f0f9f4 !important;color:var(--pos);font-weight:600}
 td.anet:focus{outline:2px solid var(--pos);background:#fff !important}
+td.ncell{text-align:left;white-space:normal;min-width:200px;max-width:320px;font-size:11px;line-height:1.45;color:var(--sub)}
+td.ncell:empty::before{content:'—';color:#c3c9d4}
+td.ncell:focus{outline:2px solid var(--actual);background:#fff !important;color:var(--ink)}
 </style>
 </head>
 <body>
@@ -137,7 +140,7 @@ td.anet:focus{outline:2px solid var(--pos);background:#fff !important}
         <th>激励D·25年发<br>·21.67w四年</th><th>激励E·25年发<br>·期权23.4w</th><th>激励F·26年发<br>·60w四年</th>
         <th>特殊递延</th>
         <th>社保<br>公积金</th><th>综合<br>个税</th><th>奖金<br>个税</th>
-        <th>税前<br>合计</th><th>税后到手<br>(计算)</th><th>实际到手<br>(填写)</th>
+        <th>税前<br>合计</th><th>税后到手<br>(计算)</th><th>实际到手<br>(填写)</th><th>备注</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -214,7 +217,7 @@ function addRow(){
   var m=(prompt('新增月份（格式 YYYY-MM）：','')||'').trim();
   if(!/^\d{4}-\d{2}$/.test(m)){ if(m)toast('月份格式应为 YYYY-MM',false); return; }
   if(RAW.some(function(r){return r.month===m;})){ toast('该月份已存在',false); return; }
-  var rec={month:m,actual:false,year:parseInt(m.slice(0,4),10),base:0,fan:0,s13:0,yearend:0,d5:0,d6:0,d7:0,d8:0,d9:0,d10:0,d11:0,gross:0,soc:0,comp_tax:0,bonus_tax:0,net:0,adj:0,actual_net:null};
+  var rec={month:m,actual:false,year:parseInt(m.slice(0,4),10),base:0,fan:0,s13:0,yearend:0,d5:0,d6:0,d7:0,d8:0,d9:0,d10:0,d11:0,gross:0,soc:0,comp_tax:0,bonus_tax:0,net:0,adj:0,actual_net:null,note:''};
   recompute(rec); RAW.push(rec); sortRAW();
   buildSelectors(); document.getElementById('startSel').value=RAW[0].month; document.getElementById('endSel').value=RAW[RAW.length-1].month;
   applyFilter(); cloudUpsert(rec); toast('已新增 '+m+'（进入编辑填数据）',true);
@@ -233,6 +236,7 @@ let fileHandle=null;    // File System Access API 句柄（支持时原地覆盖
 function fmt(n){if(n===null||n===undefined||isNaN(n))return '—';return Number(n).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmt0(n){return Number(n).toLocaleString('zh-CN',{maximumFractionDigits:0});}
 function cell(v){return v===0?'<span class="zero">0.00</span>':fmt(v);}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function buildSelectors(){
   const s=document.getElementById('startSel'),e=document.getElementById('endSel');
   if(!RAW.length){ s.innerHTML='';e.innerHTML=''; return; }
@@ -266,7 +270,8 @@ function renderTable(){
       ed('soc')+ed('comp_tax')+ed('bonus_tax')+
       '<td data-cell="gross">'+fmt(r.gross)+'</td>'+
       '<td data-cell="net"><b>'+fmt(r.net)+'</b></td>'+
-      '<td'+ce+' class="anet" data-f="actual_net">'+(r.actual_net==null?'—':fmt(r.actual_net))+'</td>';
+      '<td'+ce+' class="anet" data-f="actual_net">'+(r.actual_net==null?'—':fmt(r.actual_net))+'</td>'+
+      '<td'+ce+' class="ncell" data-f="note">'+esc(r.note||'')+'</td>';
     tb.appendChild(tr);
   });
   attachEdit();
@@ -320,6 +325,13 @@ function attachEdit(){
     td.addEventListener('blur',()=>{
       const rec=RAW.find(x=>x.month===td.closest('tr').dataset.month);
       const f=td.dataset.f;
+      if(f==='note'){
+        let t=(td.textContent||'').replace(/\s+/g,' ').trim();
+        if(t==='—')t='';
+        rec.note=t;
+        DIRTY=true;markDirty();cloudUpsert(rec);
+        return;  // 备注是纯文本，不触发重算与重绘
+      }
       const raw=td.textContent.replace(/[, ]/g,'');
       if(f==='actual_net'){
         rec.actual_net=(raw===''||raw==='—')?null:(parseFloat(raw)||0);
@@ -569,8 +581,9 @@ function quick(s){document.getElementById('startSel').value=s;document.getElemen
 function recalcFromEdits(){renderTable();renderStats();renderCharts();}
 function exportCSV(){
   const rows=currentRows();
-  let csv='月份,类型,月薪,饭贴,加项减项,十三薪,年终奖,激励A,激励B,激励C,激励D,激励E,激励F,特殊递延,社保公积金,综合个税,奖金个税,税前合计,税后到手(公式),实际到手(表记)\n';
-  rows.forEach(r=>{csv+=[r.month,r.actual?'实际':'预测',r.base,r.fan,r.adj,r.s13,r.yearend,r.d7,r.d8,r.d5,r.d6,r.d9,r.d10,r.d11,r.soc,r.comp_tax,r.bonus_tax,r.gross,r.net,(r.actual_net==null?'':r.actual_net)].join(',')+'\n';});
+  let csv='月份,类型,月薪,饭贴,加项减项,十三薪,年终奖,激励A,激励B,激励C,激励D,激励E,激励F,特殊递延,社保公积金,综合个税,奖金个税,税前合计,税后到手(公式),实际到手(表记),备注\n';
+  const q=s=>'"'+String(s||'').replace(/"/g,'""')+'"';
+  rows.forEach(r=>{csv+=[r.month,r.actual?'实际':'预测',r.base,r.fan,r.adj,r.s13,r.yearend,r.d7,r.d8,r.d5,r.d6,r.d9,r.d10,r.d11,r.soc,r.comp_tax,r.bonus_tax,r.gross,r.net,(r.actual_net==null?'':r.actual_net),q(r.note)].join(',')+'\n';});
   const b=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='salary_filtered.csv';a.click();
 }
 /* ===== 编辑 / 保存 功能 ===== */
@@ -579,7 +592,7 @@ function toggleEdit(){
   const eb=document.getElementById('editBtn'), sb=document.getElementById('saveBtn'), ab=document.getElementById('addBtn');
   if(EDIT_ON){
     eb.textContent='🔒 退出编辑'; sb.style.display=''; if(ab)ab.style.display='';
-    document.getElementById('editHint').textContent='编辑中：点单元格直接改数字，改动实时自动同步到云端（无需手动保存）。行首✕可删除该月，「＋新增月份」可加行。';
+    document.getElementById('editHint').textContent='编辑中：点单元格直接改数字，最后一列「备注」可填文字；改动实时自动同步到云端（无需手动保存）。行首✕可删除该月，「＋新增月份」可加行。';
   }else{
     eb.textContent='✎ 开启编辑'; sb.style.display='none'; if(ab)ab.style.display='none';
     document.getElementById('editHint').textContent='已退出编辑（只读）。改动均已实时同步云端。';
@@ -693,8 +706,27 @@ if(document.readyState!=='loading'){ __salaryInit(); } else { document.addEventL
     · <b>十三薪</b>：每年<b>归属12月</b>发放、金额 = 当月 base，并入综合所得；因滞后一个月发放，它是<b>次年</b>累计的第1笔，所以归属12月税负很低<br>
     · <b>长期现金激励（本BU）</b>：归属 1/4/7/10 月各一次，并入综合所得（归属2026-07实测65659 = 13543 + 14616 + 37500）<br>
     · <b>社保公积金</b>：每年归属7月上浮 2.4%（近两年实测 +2.41% / +2.32%）→ 归属2027-07起7899.55、2028-07起8089.14、2029-07起8283.28<br>
-    · <b>专项附加扣除</b>：按 0 填（归属2024-04 与 归属2026-07 两张工资条实测均为0）。如申报婴幼儿照护2000/月，30%档每年可少缴约7200<br>
-    · <b>实际行不参与重算</b>：累计链走到实际月时，直接续接工资条上的实缴税额，只对预估月套用上述公式
+    · <b>专项附加扣除</b>：历史实测 2022年累计4500、2023年累计10500（均为住房租金，中途停报），2024/2025/2026 三年均为 0。预估行按 0 填。如申报婴幼儿照护2000/月，30%档每年可少缴约7200<br>
+    · <b>实际行不参与重算</b>：累计链走到实际月时，直接续接工资条上的实缴税额，只对预估月套用上述公式<br><br>
+
+    <b>⑦ 各年度「年终奖」税基口径（6张工资条反推）</b><br>
+    公式本身逐年<b>没变</b>，一直是标准的全年一次性奖金单独计税：合并基数÷12 定档 → 税 = 合并基数全额 × 税率 − 速算扣除数。<br>
+    真正变的是「往这个基数里装什么」，共三个阶段：<br>
+    · <b>2019～2021：只装年终奖</b>。2019-01 10000→300；2019-07 30000→900；2020-02 14000→420；2021-02 66000→6390（66000/12=5500 落10%档 → 66000×10%−210）<br>
+    · <b>2022～2024：年终奖 + 十三薪全额（含春节前已预发的80%）</b>。已预发部分当月<b>只发现金、不进工资累计收入</b>，税基留到次年4月的奖金单里一起算：<br>
+    &nbsp;&nbsp;— 归属2022-04：123000 + 尾款4160 + 已预发16640 = <b>143800</b>；143800/12=11983.33 落10%档 → 143800×10%−210 = <b>14170</b><br>
+    &nbsp;&nbsp;— 归属2023-04：190000 + 尾款5900 + 已预发23600 = <b>219500</b>；219500/12=18291.67 落20%档 → 219500×20%−1410 = <b>42490</b><br>
+    &nbsp;&nbsp;— 归属2024-04：250000 + 现金激励165000 + 十三薪36000（尾款7200＋已预发28800） = <b>451000</b>；451000/12=37583.33 落30%档 → 451000×30%−4410 = <b>130890</b><br>
+    · <b>2025年起：年终奖 + 长期现金激励；十三薪改为全额随归属12月工资并入综合所得</b>，不再进奖金单：<br>
+    &nbsp;&nbsp;— 归属2025-04：200000 + 165000 = <b>365000</b>；365000/12=30416.67 落25%档 → 365000×25%−2660 = <b>88590</b><br>
+    &nbsp;&nbsp;— 归属2026-04：360000 + 204150 = <b>564150</b>；564150/12=47012.50 落30%档 → 564150×30%−4410 = <b>164835</b><br>
+    表内填法：奖金单里「已预发的十三薪」记在<b>发钱那个月</b>的「特殊递延」列（当月 bonus_tax = 0），4月奖金单只填当月实际到账的现金与实缴奖金税。所以 2022/2023/2024 三年的4月，<b>奖金个税 ≠ 用本行现金列套公式的结果</b>，差的正是上一年12月已预发的那笔——这是口径特例，不是填错。<br><br>
+
+    <b>⑧ 税后减项（商保 / 月饼 / 年货卡 合并计税扣回）</b><br>
+    公司发的实物福利与商业保险要并入当月工资计税，做法是：先在「税前加项」加一笔计税金额，个税照常扣，再在<b>税后</b>把对应金额扣回，等于福利本身不给现金、只承担税。<br>
+    · 归属2023-11：税前加项1572.25（月饼148.42 + 商保1423.83），税后减项1257.80（月饼118.74 + 商保1139.06），实缴个税5212.52，工资进卡24592.27<br>
+    · 归属2025-11：税前加项2972.08（商保、年货卡合并计税反推），税后减项1931.85（商保1811.85 + 年货卡120），实缴个税92692.44，工资进卡216420.39<br>
+    本表没有「税后减项」列，为了让<b>税前合计</b>与<b>到手</b>两头都对得上，这两个月把税后扣回<b>并进了「综合个税」列</b>（= 实缴个税 + 税后扣回），行内备注已注明真实的实缴个税金额。
   </div>
 </div>
 </body>
