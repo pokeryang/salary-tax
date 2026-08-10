@@ -249,7 +249,13 @@ function currentRows(){
   return RAW.filter(r=>r.month>=s&&r.month<=e&&(t==='all'||(t==='actual'&&r.actual)||(t==='forecast'&&!r.actual)));
 }
 function recompute(rec){
-  rec.adj=rec.adj||0;
+  // 缺字段兜底：任何一个参与计算的字段是 undefined/null/空串，都会让整行算出 NaN 并被写回云端。
+  // 原来只有 adj 有 ||0，这里统一把所有数值字段归一成数字再算。
+  var NUMF=['base','fan','adj','s13','yearend','soc','comp_tax','bonus_tax','d11'].concat(DCOLS);
+  NUMF.forEach(function(k){
+    var v=Number(rec[k]);
+    rec[k]=isFinite(v)?v:0;
+  });
   rec.gross=rec.base+rec.fan+rec.adj+rec.s13+rec.yearend+DCOLS.reduce((a,k)=>a+rec[k],0)+rec.d11;
   const comp=rec.base+rec.fan+rec.adj+rec.s13+DCOLS.reduce((a,k)=>a+rec[k],0);
   rec.net=comp-rec.soc-rec.comp_tax+(rec.yearend+rec.d11-rec.bonus_tax);
